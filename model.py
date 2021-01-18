@@ -3,12 +3,13 @@ import pandas as pd
 
 from sklearn.naive_bayes import GaussianNB, MultinomialNB # MutinominalNB
 from sklearn.svm import SVC 
-from sklearn.ensemble import RandomForestClassifier
+# from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 
 from sklearn.pipeline import Pipeline
-from sklearn.ensemble import StackingClassifier
+# from sklearn.ensemble import StackingClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import time
@@ -33,18 +34,13 @@ def models(X, y, option = 0, val_size=0.2, random_state=0):
         model = model.fit(X_train, y_train)
 
     elif option == 3:
-        model = RandomForestClassifier()
-        model = model.fit(X_train, y_train)
-
-    elif option == 4:
-        model = LogisticRegression()
+        model = DecisionTreeClassifier()
         model = model.fit(X_train, y_train)
 
     else:
-        estimators = [('knn', KNeighborsClassifier()),('bayes', GaussianNB()), ('svm', SVC()), ('forest', RandomForestClassifier()), ('logistic', LogisticRegression())]
-        stacked_model = StackingClassifier(estimators=estimators, final_estimator=LogisticRegression())
-        model = stacked_model.fit(X_train, y_train)
-    
+        model = LogisticRegression()
+        model = model.fit(X_train, y_train)
+
     start = time.time()
     y_pred_train = model.predict(X_train)
     stop_train = time.time()
@@ -84,18 +80,13 @@ def cat_models(X, y, option = 0, val_size=0.2, random_state=0):
         model = model.fit(X_train, y_train)
 
     elif option == 3:
-        model = RandomForestClassifier()
-        model = model.fit(X_train, y_train)
-
-    elif option == 4:
-        model = LogisticRegression()
+        model = DecisionTreeClassifier()
         model = model.fit(X_train, y_train)
 
     else:
-        estimators = [('knn', KNeighborsClassifier()),('bayes', GaussianNB()), ('svm', SVC()), ('forest', RandomForestClassifier()), ('logistic', LogisticRegression())]
-        stacked_model = StackingClassifier(estimators=estimators, final_estimator=LogisticRegression())
-        model = stacked_model.fit(X_train, y_train)
-    
+        model = LogisticRegression()
+        model = model.fit(X_train, y_train)
+
     start = time.time()
     y_pred_train = model.predict(X_train)
     stop_train = time.time()
