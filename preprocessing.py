@@ -9,6 +9,15 @@ import copy
 import string
 from vncorenlp import VnCoreNLP
 from gensim.parsing.preprocessing import strip_non_alphanum, split_alphanum, strip_short, strip_numeric
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import train_test_split
+
+# !pip3 install fairseq
+# !pip3 install fastbpe
+# !pip3 install vncorenlp
+# !pip3 install transformers
+# !pip install emot
+# !pip install emoji
 
 # >>>Chuẩn hóa cách đặt dấu kiểu cũ -> mới. Ví dụ "qủa"->"quả"
 # >>>Ví dụ: 
@@ -262,3 +271,117 @@ def text_preprocessing(text, annotator=annotator, stopwords=[]):
     print("EXCEPTION with", origin_text, '\n')
     return "EXCEPTION_STRING"
 
+############################################################################
+############################  BERRT  ########################################
+from fairseq.data.encoders.fastbpe import fastBPE
+from fairseq.data import Dictionary
+import argparse
+from tqdm import tqdm
+
+def build_vocab(path_bpe="PhoBERT_base_transformers/bpe.codes" ,path_dict="PhoBERT_base_transformers/dict.txt"):
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--bpe-codes', 
+    default= path_bpe,
+    required=False,
+    type=str,
+    help='path to fastBPE BPE'
+  )
+  args, unknown = parser.parse_known_args()
+  bpe = fastBPE(args)
+  # Load the dictionary
+  vocab = Dictionary()
+  vocab.add_from_file(path_dict)
+  return vocab, bpe
+
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+def convert_line(sents, MAX_LEN=256):
+  vocab, bpe = build_vocab()
+  ids = []
+  for sent in sents:
+    subwords = '<s> ' + bpe.encode(sent) + ' </s>'
+    encoded_sent = vocab.encode_line(subwords, append_eos=True, add_if_not_exist=False).long().tolist()
+    ids.append(encoded_sent)
+  i_d = pad_sequences(ids, maxlen=MAX_LEN, dtype="long", value=0, truncating="post", padding="post")
+  return i_d
+
+# Create Masks
+def create_masks(ids):
+  masks = []
+  for sent in ids:
+    mask = [int(token_id > 0) for token_id in sent]
+    masks.append(mask)
+  return masks
+
+# Load DataLoader
+from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
+import torch
+
+def Load_dataloader(ids, labels, masks, batch_size=32):
+  inputs = torch.LongTensor(ids)
+  labels = torch.tensor(labels)
+  masks = torch.tensor(masks)
+
+  data = TensorDataset(inputs, masks, labels)
+  sampler = SequentialSampler(data)
+  dataloader = DataLoader(data, sampler=sampler, batch_size=batch_size)
+
+  return dataloader
+
+# Evaluate
+import numpy as np
+from sklearn.metrics import f1_score, accuracy_score, confusion_matrix
+
+def flat_accuracy(preds, labels):
+    pred_flat = np.argmax(preds, axis=1).flatten()
+    labels_flat = labels.flatten()
+    
+    F1_score = f1_score(pred_flat, labels_flat, average='macro')
+    cm = confusion_matrix(pred_flat, labels_flat)
+    
+    return accuracy_score(pred_flat, labels_flat), F1_score, cm
+
+# preprocessing for bert
+def bert_preprocessing(train_sents, train_labels, test_text, test_labels, w2v=1):
+  # split train and valid set
+  train_sents, val_sents, train_labels, val_labels = train_test_split(train_sents, train_labels, test_size=0.1, random_state=42)
+  vectorizer = TfidfVectorizer(max_features=128)
+  train_tfidf = vectorizer.fit_transform(train_sents).toarray()
+  val_tfidf = vectorizer.transform(val_sents).toarray()
+  test_tfidf = vectorizer.transform(test_text).toarray()
+
+  # Convert sentence to vector
+  if w2v == 'bpe_tfidf': # bpe + tfidf
+    # bpe
+    train_ids = convert_line(train_sents, MAX_LEN=128)
+    val_ids = convert_line(val_sents, MAX_LEN=128)
+    test_ids = convert_line(test_text, MAX_LEN=128)
+
+    # concate tfidf with bpe
+    train_ids = np.concatenate((train_ids, train_tfidf*100), axis=1)
+    val_ids = np.concatenate((val_ids, val_tfidf*100), axis=1)
+    test_ids = np.concatenate((test_ids, test_tfidf*100), axis=1)
+
+  elif w2v == 'bpe':   # only bpe
+    train_ids = convert_line(train_sents, MAX_LEN=256)
+    val_ids = convert_line(val_sents, MAX_LEN=256)
+    test_ids = convert_line(test_text, MAX_LEN=256)
+
+  elif w2v == 'tfidf':
+    train_ids = train_tfidf*100
+    val_ids = val_tfidf*100
+    test_ids = test_tfidf*100
+  else:
+    print('Enter again')
+    return _
+
+  # creat masks
+  train_masks = create_masks(train_ids)
+  val_masks = create_masks(val_ids)
+  test_masks =create_masks(test_ids)
+
+  # Load DataLoader
+  train_dataloader = Load_dataloader(train_ids, train_labels, train_masks)
+  val_dataloader = Load_dataloader(val_ids, val_labels, val_masks)
+  test_dataloader = Load_dataloader(test_ids, test_labels, test_masks)
+
+  return train_dataloader, val_dataloader, test_dataloader, train_sents, val_sents, train_labels, val_labels, vectorizer
